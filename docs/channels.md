@@ -537,7 +537,8 @@ Settings and rechecks the relay when confirmed. Cancelling returns focus to that
 button; confirming removes it, so the restored composer takes focus. Archived
 and read-only histories drop the empty state's “Start the conversation below.”
 hint. Unarchiving restores the
-composer and its saved text draft. A remote unarchive in the same open conversation
+composer and its saved text draft, and reopens an unsaved message edit. A remote
+unarchive in the same open conversation
 preserves the reader's focus instead of autofocus moving it into the restored composer.
 When refreshed Settings actions remount, focus
 returns to its persistent Settings-tab close control instead of an unrelated sidebar row;
