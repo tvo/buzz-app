@@ -742,7 +742,10 @@ and are asked to sign in again in Buzz.
   send it names. If a background send fails, its notice names that conversation
   and, when you are elsewhere, can open it (except a huddle). Your message and
   files are back in that conversation's composer. Do not
-  promise support for every file type or size.
+  promise support for every file type or size. In the desktop app, a file card
+  downloads to Downloads once and then opens that copy; right-click it to
+  **Show in Finder** (or **Show in folder**) or **Download again**. If the
+  saved file is moved, deleted or edited, the card offers **Download** again.
 - **Emoji suggestions** appear when you type `:` and an emoji name. If a name
   is shortened with an ellipsis, hover over it or use the arrow keys to select
   it and see the full name in a tooltip. A chosen or picked emoji is followed

@@ -144,6 +144,8 @@ fn native_command_permissions_isolate_webviews() {
         "relay_upload",
         "relay_upload_cancel",
         "media_download",
+        "media_download_status",
+        "media_download_open",
         "file_download",
         "media_copy_image",
         "media_lift_subject",
@@ -339,8 +341,14 @@ fn native_command_permissions_isolate_webviews() {
         );
         assert_eq!(
             invoke(huddle.as_ref(), command, local_origin).is_ok(),
-            matches!(command, "media_download" | "clipboard_write_text"),
-            "huddle must only acquire bounded download and text copy: {command}"
+            matches!(
+                command,
+                "media_download"
+                    | "media_download_status"
+                    | "media_download_open"
+                    | "clipboard_write_text"
+            ),
+            "huddle must only acquire bounded downloads and text copy: {command}"
         );
         assert!(invoke(huddle.as_ref(), command, "https://example.org").is_err());
         for origin in [local_origin, "https://example.org", "http://localhost:1430"] {
