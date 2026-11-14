@@ -102,6 +102,50 @@ describe("preset tag", () => {
     expect(preset(off)).toEqual([]);
   });
 
+  it("tags the Automatic offer's answer, and drops a carried one", async () => {
+    const expected = await settings();
+    const cutover = (t: { tags: string[][] }) =>
+      t.tags.filter(([name]) => name === "cutover");
+    for (const answer of ["accepted", "declined", "auto_accepted"])
+      expect(
+        cutover(
+          artifactTemplate({
+            ...expected,
+            op: "create",
+            title: "Agent settings",
+            content: body({
+              cutover: {
+                answer,
+                at: "2026-11-14T10:00:00.000Z",
+                mode: "optInPrompt",
+              },
+            }),
+          }),
+        ),
+      ).toEqual([["cutover", answer, "optInPrompt"]]);
+    // An answer without a known mode tags the answer alone.
+    expect(
+      cutover(
+        artifactTemplate({
+          ...expected,
+          op: "create",
+          title: "Agent settings",
+          content: body({ cutover: { answer: "declined", mode: "other" } }),
+        }),
+      ),
+    ).toEqual([["cutover", "declined"]]);
+    const none = artifactTemplate({
+      ...expected,
+      op: "update",
+      prev: "a".repeat(64),
+      title: "Agent settings",
+      content: body({ cutover: { answer: "maybe" } }),
+      extra: [["cutover", "accepted"]],
+    });
+    expect(cutover(none)).toEqual([]);
+    expect(artifactProblem(sign(none), expected)).toBeUndefined();
+  });
+
   it("tags only agent settings", async () => {
     const d = await artifactD("buzz.agent.instructions", channel);
     const t = artifactTemplate({

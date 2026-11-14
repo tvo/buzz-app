@@ -127,6 +127,7 @@ import {
   recommendedSetup,
   setRuntimeRecommendation,
 } from "./recommended";
+import { cutoverOffer, setCutoverOffer } from "./cutover";
 
 /** The tag that the echo type's default watch matches. */
 const DEPLOY = ["t", "deploy"];
@@ -3103,12 +3104,24 @@ it("asks the first plugin that recommends, and waits for plugins to start before
     });
     await Promise.resolve();
     expect(ready).toBe(false);
-    answer({ recommendedBy: "Example Org", candidates: [ORG] });
+    // Synthetic copy: an offer rides beside the setup.
+    const offer = {
+      mode: "optInPrompt",
+      copy: {
+        title: "Switch?",
+        body: "{agent} uses {model}.",
+        acceptLabel: "Yes",
+        optOutLabel: "No",
+      },
+      excludeWords: ["Model"],
+    };
+    answer({ recommendedBy: "Example Org", candidates: [ORG], cutover: offer });
     await waiting;
     expect(recommendedSetup()).toEqual({
       recommendedBy: "Example Org",
       candidates: [ORG],
     });
+    expect(cutoverOffer()).toEqual(offer);
     // The setup is final: a later call is ignored.
     first.owner("org.late").agents.recommend(other);
     expect(other).not.toHaveBeenCalled();
@@ -3148,6 +3161,7 @@ it("asks the first plugin that recommends, and waits for plugins to start before
     expect(recommendedSetup().candidates).toEqual([]);
   } finally {
     setRuntimeRecommendation(undefined);
+    setCutoverOffer(undefined);
     warn.mockRestore();
   }
 });

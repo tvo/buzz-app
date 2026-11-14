@@ -9,7 +9,8 @@ import { Select } from "../../shared/design-system/ui/Select";
 import { SettingsGroupExpand } from "../../shared/design-system/ui/SettingsGroup";
 import { type RecommendedCandidate, recommendedSetup } from "./recommended";
 
-const effortLabel = (effort: string) =>
+/** A thinking level as people read it, such as "Extra high". */
+export const effortLabel = (effort: string) =>
   effort === "xhigh"
     ? "Extra high"
     : `${effort.charAt(0).toUpperCase()}${effort.slice(1)}`;
@@ -50,6 +51,11 @@ export function AISettingsIcon({
   );
 }
 
+/** What a candidate runs, as the Uses line shows it: "GPT 6.1 Sol · High". */
+export const usesValue = (
+  candidate: Pick<RecommendedCandidate, "label" | "effort">,
+) => `${candidate.label} · ${effortLabel(candidate.effort)}`;
+
 /** What Automatic picked, with a plain explanation when it skipped a harness.
  * This sits inside a Select option, so it contains no interactive controls. */
 export function UsesLine({
@@ -65,7 +71,7 @@ export function UsesLine({
   /** The usual pick's harness, when it isn't set up here. */
   skipped?: string | undefined;
 }>) {
-  const value = `${candidate.label} · ${effortLabel(candidate.effort)}`;
+  const value = usesValue(candidate);
   return (
     <span>
       <span className="text-caption text-subtle">

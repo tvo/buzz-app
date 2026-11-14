@@ -109,6 +109,8 @@ export function resolveStart<C extends object>(input: StartInput<C>): Start<C> {
     config = read.recommended
       ? { ...config, preset: PRESET }
       : offRecommended(config);
+    // So is its answer to the Automatic offer; a local one stays without it.
+    if (read.cutover) config = { ...config, cutover: read.cutover };
     applied = read.settings;
     revisions.push(entry.head.id);
   }

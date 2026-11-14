@@ -4,6 +4,7 @@
 import { retryRead } from "../relay/read-retry";
 import type { EventData, RelayEvent } from "../relay/events";
 import { type SettingsSchema, syncedSettings } from "./agent-config";
+import { cutoverOf } from "./cutover";
 import {
   ARTIFACT_KIND,
   artifactOp,
@@ -326,6 +327,16 @@ export function revertTemplate(
       ...parse(target.content),
       name: parse(base.content)?.name,
     });
+  // Going back to before the Automatic offer was answered keeps the answer,
+  // so it is never asked again.
+  const answered = cutoverOf(parse(head.content));
+  if (
+    expected.type === "buzz.agent.settings" &&
+    answered &&
+    !cutoverOf(parse(target.content)) &&
+    parse(target.content)
+  )
+    content = JSON.stringify({ ...parse(target.content), cutover: answered });
   const template = artifactTemplate({
     ...expected,
     op: restore ? "restore" : "update",

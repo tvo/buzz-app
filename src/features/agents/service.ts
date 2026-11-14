@@ -68,6 +68,7 @@ import type { revertTemplate, SettingsCheck } from "./agent-config-history";
 import type { RevertOutcome } from "./AgentConfigHistory";
 import { isBundledOwner } from "../../plugins/provenance";
 import { awaitRecommendation, type RecommendedCandidate } from "./recommended";
+import { takeCutover } from "./cutover";
 import { nativeRelayInfo } from "../relay/native";
 import { AgentRunners, type Connection, TIMEOUT_LIMIT_MS } from "./runner";
 import { CoreMemoryCache } from "./core-memory-cache";
@@ -1462,7 +1463,11 @@ export type Agents = {
    * Call it while the plugin starts: `source` is asked once, at once, and its
    * answer, `{recommendedBy?, description?, candidates}` checked like the
    * setting, is used if it comes within `SOURCE_MS` of the app's start. No
-   * answer, a failure, an invalid or late setup keeps the build's. `signal` aborts when the wait ends. Only the first
+   * answer, a failure, an invalid or late setup keeps the build's.
+   * The answer may also carry `cutover`, a one-time offer to switch the
+   * person's only agent to Automatic (`CutoverOffer`, cutover.ts), with or
+   * without a setup (without one, the build's stays); an offer beside an
+   * invalid setup is dropped. `signal` aborts when the wait ends. Only the first
    * plugin to call it in a launch is asked; later calls are ignored. */
   recommend(source: RecommendedSource): void;
   /** The Buzz side of a turn for an agent type a plugin brings: where a
@@ -2240,7 +2245,11 @@ export class AgentsService extends Service implements Agents {
     this.addedTools = createContributions<AddedTool & { id: string }>(ctx);
     this.addedInstructions = createContributions<AgentInstructions>(ctx);
     this.attentionSources = createContributions<AttentionProducer>(ctx);
-    void awaitRecommendation((signal) => this.recommendedAnswer(signal));
+    // A late answer's offer is dropped with its setup.
+    void awaitRecommendation(async (signal) => {
+      const answer = await this.recommendedAnswer(signal);
+      return signal.aborted ? undefined : takeCutover(answer);
+    });
     // Each changes the copy at once and logs a failed save itself.
     void migrateAgentStorage(storage);
     void migrateWatchFilters(storage);

@@ -1055,6 +1055,18 @@ plugin to call it in a launch is asked; later calls only log. Views that read
 the setup before it is final, such as whether a harness offers Automatic, see
 the build's. Turning the plugin off stops it answering from the next launch.
 
+The same answer may carry `cutover`, a one-time offer to switch the person's
+only agent to Automatic: `{mode, copy: {title, body, acceptLabel,
+optOutLabel, usesLabel?, notNowLabel?, dismissLabel?}, excludeWords?}`, with
+or without a setup (without one, the build's setup stays). The copy is every
+word it shows; Buzz adds only what the agent would run on. `mode` is
+`centerModalDismissAccepts`, `toastAutoApplied` or `optInPrompt`. The plugin
+decides who is offered it; Buzz checks the offer (short plain text, with
+`{agent}` and `{model}` filled in anywhere) and decides
+whether the agent qualifies; see [One-time switch to
+Automatic](configuration.md#one-time-switch-to-automatic). An invalid or late
+offer is dropped, and builds without such a plugin never show one.
+
 ### Agent operation proofs
 
 A plugin can provide an operation that another installed plugin calls from a

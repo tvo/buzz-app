@@ -10,7 +10,8 @@ import {
 } from "./agent-config";
 import { fields } from "./community-config";
 import { edited } from "./config-writes";
-import { onRecommended } from "./recommended";
+import { cutoverOf, withCutover } from "./cutover";
+import { onRecommended, withRecommended } from "./recommended";
 import { resolveStart, type Mode, type StartInput } from "./agent-start";
 import {
   syncedSettingsSchema,
@@ -411,5 +412,70 @@ describe("the synced Recommended mark", () => {
       preset: "recommended",
     });
     expect(onRecommended(start(head, local))).toBe(false);
+  });
+});
+
+describe("the synced answer to the Automatic offer", () => {
+  const agent = {
+    pubkey: "c".repeat(64),
+    name: "Agent A",
+    type: "claude-code",
+    schema: syncedSettingsSchema,
+  };
+  const published = (config: object, head?: RelayEvent) =>
+    revision(
+      JSON.parse(
+        edited(head, fields("settings", { ...agent, config }, config, head)),
+      ),
+    );
+  const start = (head: RelayEvent, own: Config = local) => {
+    const store = new AgentConfigStore(memoryStorage());
+    install(store, settings, head);
+    const { instructions: _, ...rest } = input(store);
+    const resolved = resolveStart({ ...rest, local: own });
+    if (!resolved.ok) throw new Error(resolved.reason);
+    return resolved.config;
+  };
+  const accepted = withCutover(withRecommended(local), "accepted", {
+    mode: "centerModalDismissAccepts",
+    before: local,
+    now: new Date("2026-11-14T10:00:00.000Z"),
+  });
+
+  it("syncs beside the settings and reaches a second device", () => {
+    const head = published(accepted);
+    const body = JSON.parse(head.content);
+    expect(body).toMatchObject({
+      preset: "recommended",
+      cutover: {
+        answer: "accepted",
+        at: "2026-11-14T10:00:00.000Z",
+        mode: "centerModalDismissAccepts",
+      },
+    });
+    expect(
+      settingsProblem(syncedSettingsSchema, body.settings),
+    ).toBeUndefined();
+    expect(
+      syncedSettings(head.content, "claude-code", syncedSettingsSchema),
+    ).toMatchObject({ recommended: true, cutover: { answer: "accepted" } });
+    const second = start(head, local);
+    expect(cutoverOf(second)).toEqual(cutoverOf(accepted));
+    expect(onRecommended(second)).toBe(true);
+    // Without one, nothing changes.
+    expect(JSON.parse(published(local).content)).not.toHaveProperty("cutover");
+    expect(cutoverOf(start(published(local), local))).toBeUndefined();
+  });
+
+  it("stays when a later edit's config no longer carries it", () => {
+    const head = published(
+      withCutover(local, "declined", { mode: "optInPrompt" }),
+    );
+    // A settings form's parsed config drops fields it doesn't know.
+    const next = published({ ...local, model: "model-b" }, head);
+    expect(JSON.parse(next.content)).toMatchObject({
+      cutover: { answer: "declined" },
+    });
+    expect(cutoverOf(start(next, local))?.answer).toBe("declined");
   });
 });

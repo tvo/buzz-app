@@ -288,6 +288,61 @@ describe("revert", () => {
     expect(template2.tags).toContainEqual(["title", "Old"]);
   });
 
+  it("keeps the Automatic offer's answer when going back to before it", () => {
+    const settingsExpected = {
+      ...expected,
+      type: "buzz.agent.settings" as const,
+    };
+    const body = (extra: object = {}) =>
+      JSON.stringify({
+        version: 1,
+        agentType: "goose",
+        settings: { model: "model-x" },
+        ...extra,
+      });
+    const old = rev("r0", undefined, {
+      type: "buzz.agent.settings",
+      title: "Agent settings",
+      content: body(),
+    });
+    const answered = {
+      answer: "auto_accepted",
+      at: "2026-11-14T10:00:00.000Z",
+      mode: "toastAutoApplied",
+      previous: { model: "model-x" },
+    };
+    const head = rev("r1", "r0", {
+      type: "buzz.agent.settings",
+      title: "Agent settings",
+      content: body({ preset: "recommended", cutover: answered }),
+    });
+    const check = { agentType: "goose", schema: { model: "string" } } as const;
+    const template = revertTemplate(settingsExpected, head, old, check);
+    expect(JSON.parse(template.content)).toEqual(
+      JSON.parse(body({ cutover: answered })),
+    );
+    expect(template.tags).toContainEqual([
+      "cutover",
+      "auto_accepted",
+      "toastAutoApplied",
+    ]);
+    expect(template.tags).not.toContainEqual(["preset", "recommended"]);
+    // A target that has its own answer keeps it; instructions are untouched.
+    const declined = rev("r2", "r1", {
+      type: "buzz.agent.settings",
+      title: "Agent settings",
+      content: body({ cutover: { answer: "declined" } }),
+    });
+    expect(
+      JSON.parse(
+        revertTemplate(settingsExpected, declined, old, check).content,
+      ),
+    ).toMatchObject({ cutover: { answer: "declined" } });
+    expect(
+      revertTemplate(expected, rev("r1", "r0"), rev("r0")).content,
+    ).not.toContain("cutover");
+  });
+
   it("checks settings against the plugin schema before reverting", () => {
     const settingsExpected = {
       ...expected,
