@@ -494,48 +494,6 @@ fn move_failed_alert_copy(error: &str) -> (String, String) {
     )
 }
 
-/// Quote `value` for safe interpolation into a `/bin/sh -c` command string.
-/// Wraps it in single quotes and rewrites any embedded single quote as the
-/// classic `'\''` sequence (close quote, escaped literal quote, reopen quote),
-/// so a path containing shell metacharacters — or a bundle deliberately renamed
-/// to contain a quote — can't break out of the quoting and run arbitrary
-/// commands. Pure so the escaping is unit-testable.
-fn shell_single_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
-}
-
-/// The `/bin/sh -c` script that waits for process `pid` (this one) to exit,
-/// launches the copy installed at `target`, and then detaches `detach_mount`,
-/// the disk image this copy ran from, if there is one.
-///
-/// It launches with `open -n`. A copy of the bundle that was just replaced can
-/// still be running, because it is asked to quit and never waited for, and
-/// LaunchServices keeps that process registered under `target`. Plain `open`
-/// hands the request to that process instead of launching the bundle now at
-/// `target`, so once it finishes quitting no Buzz is running at all. `-n`
-/// starts the installed copy whatever else is registered at that path. This
-/// process has exited by then, so the new copy's single-instance guard has
-/// nothing to hand off to.
-///
-/// The paths are single-quote escaped before interpolation: the only reason a
-/// shell is involved at all is the wait-for-pid loop, and a bundle whose name
-/// contains shell metacharacters must not be able to turn that loop into
-/// arbitrary command execution.
-fn relaunch_script(pid: u32, target: &Path, detach_mount: Option<&Path>) -> String {
-    let target = shell_single_quote(&target.to_string_lossy());
-    let mut script = format!(
-        "while /bin/kill -0 {pid} >/dev/null 2>&1; do /bin/sleep 0.2; done; \
-         /usr/bin/open -n {target}"
-    );
-    if let Some(mount) = detach_mount {
-        let mount = shell_single_quote(&mount.to_string_lossy());
-        script.push_str(&format!(
-            "; /bin/sleep 1; /usr/bin/hdiutil detach {mount} >/dev/null 2>&1"
-        ));
-    }
-    script
-}
-
 /// The mount points of the attached disk images, read from the output of
 /// `hdiutil info -plist`: `images[].system-entities[].mount-point`. An image
 /// lists every device it provides, and only one holding a mounted filesystem
@@ -865,7 +823,14 @@ mod macos {
                     .args(["-r", "-d", "com.apple.quarantine"])
                     .arg(&target)
                     .status();
-                relaunch_after_exit(&target, detach_mount)
+                // Opened as a new instance (`open -n`) once this process has
+                // exited. A copy of the bundle that was just replaced can
+                // still be running, because it is asked to quit and never
+                // waited for, and LaunchServices keeps that process registered
+                // under `target`. Plain `open` would hand the request to it
+                // instead of launching the bundle now at `target`, so once it
+                // finished quitting no Buzz would be running at all.
+                crate::relaunch::open_after_exit(&target, detach_mount.as_deref())
             },
         )
     }
@@ -961,14 +926,6 @@ mod macos {
         output.status.success()
             && plist::Value::from_reader(std::io::Cursor::new(output.stdout))
                 .is_ok_and(|info| is_image_mount_point(&info, mount))
-    }
-
-    /// Spawn a detached shell that waits for this process to exit, launches the
-    /// installed copy, and (optionally) detaches the disk image we ran from.
-    fn relaunch_after_exit(target: &Path, detach_mount: Option<PathBuf>) -> std::io::Result<()> {
-        let script = relaunch_script(std::process::id(), target, detach_mount.as_deref());
-        Command::new("/bin/sh").arg("-c").arg(script).spawn()?;
-        Ok(())
     }
 }
 
@@ -1978,70 +1935,6 @@ mod tests {
         assert!(informative.contains("dragging Buzz into your Applications folder"));
         // The underlying error is included for support/debugging.
         assert!(informative.ends_with("\n\nDetails: ditto exited with exit status: 1"));
-    }
-
-    #[test]
-    fn shell_single_quote_wraps_plain_paths() {
-        assert_eq!(
-            shell_single_quote("/Applications/Buzz.app"),
-            "'/Applications/Buzz.app'"
-        );
-        // Spaces and shell metacharacters are inert inside single quotes.
-        assert_eq!(
-            shell_single_quote("/Volumes/My Buzz & Co/Buzz.app"),
-            "'/Volumes/My Buzz & Co/Buzz.app'"
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn shell_single_quote_neutralizes_embedded_quotes() {
-        // A bundle renamed to break out of double quotes stays a single inert
-        // argument under single-quote escaping.
-        let malicious = r#"/Volumes/x/Buzz";rm -rf ~;".app"#;
-        let quoted = shell_single_quote(malicious);
-        assert_eq!(quoted, r#"'/Volumes/x/Buzz";rm -rf ~;".app'"#);
-        // A literal single quote becomes the classic close/escape/reopen
-        // sequence rather than ending the quoted string early.
-        assert_eq!(shell_single_quote("a'b"), r#"'a'\''b'"#);
-
-        // The escaping round-trips through a real shell: the quoted string,
-        // echoed back, must equal the original path verbatim with no splitting
-        // or command execution.
-        let output = std::process::Command::new("/bin/sh")
-            .arg("-c")
-            .arg(format!("printf %s {}", shell_single_quote(malicious)))
-            .output()
-            .expect("spawn /bin/sh");
-        assert_eq!(String::from_utf8_lossy(&output.stdout), malicious);
-    }
-
-    #[test]
-    fn relaunch_script_launches_a_new_instance_once_this_process_exits() {
-        // `-n`: a copy of the replaced bundle that is still quitting stays
-        // registered at this path, and plain `open` would hand the launch to
-        // it instead of starting the installed copy.
-        assert_eq!(
-            relaunch_script(4711, Path::new("/Applications/Buzz.app"), None),
-            "while /bin/kill -0 4711 >/dev/null 2>&1; do /bin/sleep 0.2; done; \
-             /usr/bin/open -n '/Applications/Buzz.app'"
-        );
-    }
-
-    #[test]
-    fn relaunch_script_detaches_the_disk_image_after_launching() {
-        // A second mounted image gets a space in its mount point, and neither
-        // path may break out of its quoting.
-        assert_eq!(
-            relaunch_script(
-                4711,
-                Path::new("/Applications/Buzz's.app"),
-                Some(Path::new("/Volumes/Buzz 1")),
-            ),
-            "while /bin/kill -0 4711 >/dev/null 2>&1; do /bin/sleep 0.2; done; \
-             /usr/bin/open -n '/Applications/Buzz'\\''s.app'; \
-             /bin/sleep 1; /usr/bin/hdiutil detach '/Volumes/Buzz 1' >/dev/null 2>&1"
-        );
     }
 
     /// `hdiutil info -plist` with three images attached, cut down to the keys
