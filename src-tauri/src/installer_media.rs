@@ -1059,6 +1059,10 @@ mod tests {
         Path::new(TRANSLOCATION_MOUNT).join("d/Buzz.app")
     }
 
+    // Unix only, like the other tests here that need an original to be
+    // identified: `/Volumes/…` has no drive prefix, so on Windows it isn't an
+    // absolute path and `translocated_original` names nothing.
+    #[cfg(unix)]
     #[test]
     fn translocated_original_is_the_bundle_the_translocation_mount_shows() {
         for original in [
@@ -1073,6 +1077,8 @@ mod tests {
         }
     }
 
+    // Unix only: the fixture paths aren't absolute on Windows.
+    #[cfg(unix)]
     #[test]
     fn translocated_original_is_none_for_a_volume_of_another_shape() {
         let on_image = translocation_volume("/Volumes/Buzz/Buzz.app");
@@ -1117,6 +1123,7 @@ mod tests {
 
     /// Runs `detach_candidate` for a `Translocated` copy of `original`, whose
     /// own volume is `original_volume`.
+    #[cfg(unix)]
     fn translocated_detach_candidate(
         original: &str,
         original_volume: Option<VolumeInfo>,
@@ -1147,6 +1154,8 @@ mod tests {
         );
     }
 
+    // Unix only: the fixture paths aren't absolute on Windows.
+    #[cfg(unix)]
     #[test]
     fn detach_candidate_for_a_translocated_copy_is_the_disk_image_holding_its_original() {
         assert_eq!(
@@ -1165,6 +1174,8 @@ mod tests {
         );
     }
 
+    // Unix only: the fixture paths aren't absolute on Windows.
+    #[cfg(unix)]
     #[test]
     fn detach_candidate_is_none_for_a_translocated_copy_that_is_not_from_a_disk_image() {
         // A quarantined download, on the writable data volume.
